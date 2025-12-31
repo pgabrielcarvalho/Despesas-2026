@@ -1,0 +1,661 @@
+import React, { useState, useEffect } from 'react';
+import { 
+  PieChart, Wallet, CreditCard, Calendar, CheckCircle2, Circle, 
+  TrendingUp, TrendingDown, Plane, Plus, Trash2, AlertCircle, 
+  Save, Banknote, ArrowUpCircle, Edit2, RotateCcw, Loader2 
+} from 'lucide-react';
+import { initializeApp } from 'firebase/app';
+import { 
+  getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken 
+} from 'firebase/auth';
+import { 
+  getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot, query, writeBatch
+} from 'firebase/firestore';
+
+// --- CONFIGURAÇÃO FIREBASE ---
+
+// LÓGICA HÍBRIDA:
+// 1. Se estiver rodando aqui no Preview, usa a config automática (__firebase_config).
+// 2. Se você exportar para Vercel, o código cairá no 'else' e usará a config manual.
+// QUANDO FOR PARA A VERCEL: Substitua o objeto vazio abaixo pelas suas chaves reais do Firebase.
+
+let firebaseConfig;
+let appId;
+
+if (typeof __firebase_config !== 'undefined') {
+  // Configuração Automática (Ambiente de Teste Aqui)
+  const firebaseConfig = JSON.parse(__firebase_config);
+  appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+} else {
+  // Configuração Manual (Para quando você colocar na Vercel)
+  // COPIE SUAS CHAVES DO CONSOLE DO FIREBASE E COLE AQUI
+  firebaseConfig = {
+    apiKey: "AIzaSyBo85fOEKZzAIshCAPIKCs4LTrnuCnRbvg",
+    authDomain: "planejamento-2026-82a96.firebaseapp.com",
+    projectId: "planejamento-2026-82a96",
+    storageBucket: "planejamento-2026-82a96.firebasestorage.app",
+    messagingSenderId: "161920317938",
+    appId: "1:161920317938:web:51b0677afb1a16de23936b"
+  };
+  appId = 'planejamento-2026';
+}
+
+// Inicialização
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+const App = () => {
+  // --- ESTADO DE AUTENTICAÇÃO E LOADING ---
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  // --- ESTADOS DA APLICAÇÃO ---
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [selectedMonth, setSelectedMonth] = useState(0);
+
+  // Dados vazios inicialmente (serão preenchidos pelo banco)
+  const [incomes, setIncomes] = useState([]);
+  const [expenses, setExpenses] = useState([]);
+  const [creditCardExpenses, setCreditCardExpenses] = useState([]);
+  const [vacationFund, setVacationFund] = useState({ incomes: [], expenses: [] });
+  const [invoiceTotals, setInvoiceTotals] = useState(Array(12).fill(0));
+
+  // --- ESTADOS DE FORMULÁRIO ---
+  const [newIncome, setNewIncome] = useState({ name: '', value: '', type: 'fixed', month: 0 });
+  const [newCardExpense, setNewCardExpense] = useState({ name: '', value: '', installments: 1, startMonth: 0 });
+  const [newVacationIncome, setNewVacationIncome] = useState({ name: '', value: '' });
+  const [newVacationExpense, setNewVacationExpense] = useState({ name: '', value: '' });
+
+  const months = [
+    "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+    "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
+  ];
+
+  // --- EFEITO 1: AUTENTICAÇÃO ---
+  useEffect(() => {
+    const initAuth = async () => {
+      try {
+        // Verifica se existe um token de teste (ambiente interno)
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          // Fallback para Vercel/Produção (Login Anônimo)
+          await signInAnonymously(auth);
+        }
+      } catch (error) {
+        console.error("Erro na autenticação:", error);
+      }
+    };
+    initAuth();
+    const unsubscribe = onAuthStateChanged(auth, (u) => setUser(u));
+    return () => unsubscribe();
+  }, []);
+
+  // --- EFEITO 2: SINCRONIZAÇÃO DE DADOS (Database) ---
+  useEffect(() => {
+    if (!user) return;
+
+    // Caminho dos dados: artifacts/APP_NAME/users/USER_ID
+    const basePath = `artifacts/${appId}/users/${user.uid}`;
+
+    // Helper para ouvir coleções
+    const subscribe = (collectionName, setter) => {
+      const q = query(collection(db, basePath, collectionName));
+      return onSnapshot(q, (snapshot) => {
+        const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        
+        // Se for a primeira vez e estiver vazio, popular com dados iniciais (Seed)
+        // Usamos localStorage para garantir que o seed só rode uma vez por navegador
+        if (items.length === 0 && !localStorage.getItem(`seeded_${collectionName}_v1`)) {
+           seedData(collectionName);
+           localStorage.setItem(`seeded_${collectionName}_v1`, 'true');
+        } else {
+           setter(items);
+        }
+      }, (err) => console.error(`Erro lendo ${collectionName}:`, err));
+    };
+
+    // Helper para ouvir documento único (Totais Fatura)
+    const subscribeDoc = (docName, setter, defaultVal) => {
+       return onSnapshot(doc(db, basePath, 'general', docName), (docSnap) => {
+         if (docSnap.exists()) {
+           setter(docSnap.data().data);
+         } else {
+           // Criar doc se não existe
+           setDoc(doc(db, basePath, 'general', docName), { data: defaultVal });
+         }
+       });
+    };
+
+    const unsubIncomes = subscribe('incomes', setIncomes);
+    const unsubExpenses = subscribe('expenses', setExpenses);
+    const unsubCredit = subscribe('credit_expenses', setCreditCardExpenses);
+    const unsubVacIn = subscribe('vacation_incomes', (data) => setVacationFund(prev => ({ ...prev, incomes: data })));
+    const unsubVacOut = subscribe('vacation_expenses', (data) => setVacationFund(prev => ({ ...prev, expenses: data })));
+    const unsubTotals = subscribeDoc('invoice_totals', setInvoiceTotals, Array(12).fill(0));
+
+    setLoading(false);
+
+    return () => {
+      unsubIncomes(); unsubExpenses(); unsubCredit(); unsubVacIn(); unsubVacOut(); unsubTotals();
+    };
+  }, [user]);
+
+  // --- FUNÇÃO DE SEED (Popular dados iniciais) ---
+  const seedData = async (collectionName) => {
+     const basePath = `artifacts/${appId}/users/${user.uid}`;
+     const batch = writeBatch(db);
+     
+     let initialData = [];
+     
+     if (collectionName === 'expenses') {
+       initialData = [
+         { name: "Condomínio", value: 2500.00, paidStatus: Array(12).fill(false) },
+         { name: "Escola Crianças", value: 4500.00, paidStatus: Array(12).fill(false) },
+         { name: "Energia Elétrica", value: 600.00, paidStatus: Array(12).fill(false) },
+         { name: "Água / Saneamento", value: 180.00, paidStatus: Array(12).fill(false) },
+         { name: "Gás", value: 120.00, paidStatus: Array(12).fill(false) },
+         { name: "Internet / TV / Tel", value: 350.00, paidStatus: Array(12).fill(false) },
+         { name: "Supermercado (Mensal)", value: 3000.00, paidStatus: Array(12).fill(false) },
+         { name: "Feira / Açougue", value: 800.00, paidStatus: Array(12).fill(false) },
+         { name: "Combustível", value: 800.00, paidStatus: Array(12).fill(false) },
+         { name: "Seguro Auto", value: 450.00, paidStatus: Array(12).fill(false) },
+         { name: "Plano de Saúde", value: 1200.00, paidStatus: Array(12).fill(false) },
+         { name: "Empregada / Diarista", value: 1800.00, paidStatus: Array(12).fill(false) },
+       ];
+     } else if (collectionName === 'incomes') {
+       initialData = [
+         { name: "Rendimento Principal (AE13)", value: 51579.93, type: 'fixed', month: null, overrides: {} }
+       ];
+     } else if (collectionName === 'credit_expenses') {
+       initialData = [
+         { name: "Netflix/Spotify (Recorrente)", value: 59.90, installments: 12, startMonth: 0 },
+         { name: "Academia (Recorrente)", value: 120.00, installments: 12, startMonth: 0 },
+         { name: "Seguro Celular", value: 89.90, installments: 12, startMonth: 0 },
+         { name: "Parcela Eletrodoméstico", value: 250.00, installments: 10, startMonth: 0 }, 
+       ];
+     } else if (collectionName === 'vacation_incomes') {
+       initialData = [
+        { name: "Terço CES Abril", value: 13739.98 },
+        { name: "Férias", value: 9889.09 }
+       ];
+     } else if (collectionName === 'vacation_expenses') {
+       initialData = [
+        { name: "Passagens Aéreas", value: 5400.00 },
+        { name: "Hospedagem", value: 3200.00 }
+       ];
+     }
+
+     initialData.forEach(item => {
+       const docRef = doc(collection(db, basePath, collectionName));
+       batch.set(docRef, item);
+     });
+
+     await batch.commit();
+  };
+
+  // --- OPERAÇÕES DE BANCO DE DADOS (CRUD) ---
+  const saveItem = async (collectionName, item) => {
+    if (!user) return;
+    const basePath = `artifacts/${appId}/users/${user.uid}`;
+    // Se tem ID, atualiza (set), senão cria (add/set com id gerado)
+    const docRef = item.id 
+      ? doc(db, basePath, collectionName, item.id) 
+      : doc(collection(db, basePath, collectionName));
+    
+    // Remove campo id do payload para não duplicar
+    const { id, ...data } = item; 
+    await setDoc(docRef, data);
+  };
+
+  const deleteItem = async (collectionName, id) => {
+    if (!user) return;
+    const basePath = `artifacts/${appId}/users/${user.uid}`;
+    await deleteDoc(doc(db, basePath, collectionName, id));
+  };
+
+  const saveInvoiceTotals = async (newTotals) => {
+    if (!user) return;
+    const basePath = `artifacts/${appId}/users/${user.uid}`;
+    await setDoc(doc(db, basePath, 'general', 'invoice_totals'), { data: newTotals });
+  };
+
+
+  // --- HANDLERS (Adaptados para usar o DB) ---
+
+  const togglePaid = (expense) => {
+    const newStatus = [...expense.paidStatus];
+    newStatus[selectedMonth] = !newStatus[selectedMonth];
+    saveItem('expenses', { ...expense, paidStatus: newStatus });
+  };
+
+  const handleInvoiceTotalChange = (val) => {
+    const newTotals = [...invoiceTotals];
+    newTotals[selectedMonth] = parseFloat(val) || 0;
+    saveInvoiceTotals(newTotals); // Salva no DB
+  };
+
+  const addCardExpense = () => {
+    if (!newCardExpense.name || !newCardExpense.value) return;
+    saveItem('credit_expenses', {
+      name: newCardExpense.name,
+      value: parseFloat(newCardExpense.value),
+      installments: parseInt(newCardExpense.installments),
+      startMonth: parseInt(newCardExpense.startMonth)
+    });
+    setNewCardExpense({ name: '', value: '', installments: 1, startMonth: selectedMonth }); 
+  };
+
+  const addIncome = () => {
+    if (!newIncome.name || !newIncome.value) return;
+    saveItem('incomes', {
+      name: newIncome.name,
+      value: parseFloat(newIncome.value),
+      type: newIncome.type,
+      month: newIncome.type === 'variable' ? parseInt(newIncome.month) : null,
+      overrides: {}
+    });
+    setNewIncome({ name: '', value: '', type: 'fixed', month: selectedMonth });
+  };
+
+  const updateIncomeOverride = (income, newValueStr) => {
+    const newValue = parseFloat(newValueStr);
+    const newOverrides = { ...income.overrides };
+    
+    if (isNaN(newValue) || newValue === income.value) {
+      delete newOverrides[selectedMonth];
+    } else {
+      newOverrides[selectedMonth] = newValue;
+    }
+    saveItem('incomes', { ...income, overrides: newOverrides });
+  };
+
+  const resetIncomeOverride = (income) => {
+    const newOverrides = { ...income.overrides };
+    delete newOverrides[selectedMonth];
+    saveItem('incomes', { ...income, overrides: newOverrides });
+  };
+
+  const addVacationIncome = () => {
+    if (!newVacationIncome.name || !newVacationIncome.value) return;
+    saveItem('vacation_incomes', {
+      name: newVacationIncome.name,
+      value: parseFloat(newVacationIncome.value)
+    });
+    setNewVacationIncome({ name: '', value: '' });
+  };
+
+  const addVacationExpense = () => {
+    if (!newVacationExpense.name || !newVacationExpense.value) return;
+    saveItem('vacation_expenses', {
+      name: newVacationExpense.name,
+      value: parseFloat(newVacationExpense.value)
+    });
+    setNewVacationExpense({ name: '', value: '' });
+  };
+
+  // --- CÁLCULOS (Idênticos, apenas lendo dos states populados pelo DB) ---
+  const getMonthlyIncome = (monthIndex) => {
+    return incomes.reduce((acc, item) => {
+      if (item.type === 'fixed') {
+        const monthValue = item.overrides && item.overrides[monthIndex] !== undefined
+          ? item.overrides[monthIndex]
+          : item.value;
+        return acc + monthValue;
+      }
+      if (item.type === 'variable' && item.month === monthIndex) return acc + item.value;
+      return acc;
+    }, 0);
+  };
+
+  const currentMonthlyIncome = getMonthlyIncome(selectedMonth);
+
+  const getActiveCardExpenses = (monthIndex) => {
+    return creditCardExpenses.filter(item => {
+      const endMonth = item.startMonth + item.installments;
+      return monthIndex >= item.startMonth && monthIndex < endMonth;
+    }).map(item => ({
+      ...item,
+      currentParcel: monthIndex - item.startMonth + 1
+    }));
+  };
+
+  const activeCardExpenses = getActiveCardExpenses(selectedMonth);
+  const plannedCardTotal = activeCardExpenses.reduce((acc, item) => acc + item.value, 0);
+  
+  const manualInvoiceTotal = invoiceTotals[selectedMonth];
+  const finalCardTotal = manualInvoiceTotal > 0 ? manualInvoiceTotal : plannedCardTotal;
+  const miscellaneousCardExpenses = Math.max(0, finalCardTotal - plannedCardTotal);
+
+  const totalFixedExpenses = expenses.reduce((acc, item) => acc + item.value, 0);
+  const totalMonthExpenses = totalFixedExpenses + finalCardTotal;
+  const balance = currentMonthlyIncome - totalMonthExpenses;
+
+  const vacationIncomeTotal = vacationFund.incomes.reduce((acc, item) => acc + item.value, 0);
+  const vacationExpenseTotal = vacationFund.expenses.reduce((acc, item) => acc + item.value, 0);
+  const vacationBalance = vacationIncomeTotal - vacationExpenseTotal;
+
+  const formatCurrency = (value) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+
+  // --- UI RENDER ---
+  if (loading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-slate-50 text-slate-500 gap-2">
+        <Loader2 className="animate-spin" /> Carregando seus dados...
+      </div>
+    );
+  }
+
+  // Componentes de UI (Idênticos aos anteriores, apenas chamando as funções atualizadas)
+  const MonthSelector = () => (
+    <div className="flex items-center gap-4 bg-white p-2 rounded-lg shadow-sm border border-slate-200">
+      <span className="text-slate-500 text-sm font-medium pl-2">Mês:</span>
+      <select 
+        value={selectedMonth} 
+        onChange={(e) => setSelectedMonth(Number(e.target.value))}
+        className="p-2 border-none bg-transparent font-bold text-slate-800 outline-none cursor-pointer"
+      >
+        {months.map((m, i) => <option key={i} value={i}>{m}</option>)}
+      </select>
+    </div>
+  );
+
+  const Sidebar = () => (
+    <div className="w-full md:w-64 bg-slate-900 text-white flex flex-col p-4 md:h-screen sticky top-0 z-10">
+      <div className="mb-8 p-2">
+        <h1 className="text-xl font-bold flex items-center gap-2">
+          <Wallet className="text-emerald-400" /> Finanças 2026
+        </h1>
+        <div className="text-[10px] text-slate-500 mt-1">Sincronizado na Nuvem</div>
+      </div>
+      <nav className="flex flex-col gap-2">
+        {[
+          { id: 'dashboard', icon: PieChart, label: 'Visão Geral' },
+          { id: 'incomes', icon: Banknote, label: 'Receitas' },
+          { id: 'monthly', icon: Calendar, label: 'Despesas Mensais' },
+          { id: 'credit', icon: CreditCard, label: 'Gestão Cartão' },
+          { id: 'vacation', icon: Plane, label: 'Fundo Férias' },
+        ].map(item => (
+          <button 
+            key={item.id}
+            onClick={() => setActiveTab(item.id)}
+            className={`p-3 rounded-lg flex items-center gap-3 transition-colors ${activeTab === item.id ? 'bg-emerald-600 text-white' : 'hover:bg-slate-800 text-slate-300'}`}
+          >
+            <item.icon size={20} /> {item.label}
+          </button>
+        ))}
+      </nav>
+    </div>
+  );
+
+  // Views
+  const DashboardView = () => (
+    <div className="space-y-6 animate-fade-in">
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-2xl font-bold text-slate-800">Dashboard</h2>
+        <MonthSelector />
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 relative overflow-hidden group hover:border-emerald-200 transition-colors cursor-pointer" onClick={() => setActiveTab('incomes')}>
+          <div className="absolute top-0 right-0 p-4 opacity-10"><TrendingUp size={100} /></div>
+          <div className="text-slate-500 text-sm mb-1 font-medium">Receita Prevista</div>
+          <div className="text-3xl font-bold text-slate-800">{formatCurrency(currentMonthlyIncome)}</div>
+        </div>
+
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 relative overflow-hidden">
+          <div className="absolute top-0 right-0 p-4 opacity-10 text-red-500"><TrendingDown size={100} /></div>
+          <div className="text-slate-500 text-sm mb-1 font-medium">Total Despesas</div>
+          <div className="text-3xl font-bold text-red-600">{formatCurrency(totalMonthExpenses)}</div>
+          <div className="mt-2 text-xs text-slate-500">
+             Fixo: {formatCurrency(totalFixedExpenses)} | Cartão: {formatCurrency(finalCardTotal)}
+          </div>
+        </div>
+
+        <div className={`p-6 rounded-xl shadow-sm border relative overflow-hidden ${balance >= 0 ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'}`}>
+          <div className="text-white/80 text-sm mb-1 font-medium">Resultado</div>
+          <div className="text-3xl font-bold">{formatCurrency(balance)}</div>
+        </div>
+      </div>
+    </div>
+  );
+
+  const IncomeView = () => (
+    <div className="space-y-6 animate-fade-in">
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold text-slate-800">Gestão de Receitas</h2>
+        <MonthSelector />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-1 bg-white p-6 rounded-xl shadow-sm border border-slate-200 h-fit">
+          <h3 className="font-bold text-slate-700 mb-4 flex items-center gap-2">
+            <Plus size={20} className="text-emerald-500" /> Nova Entrada
+          </h3>
+          <div className="space-y-4">
+            <input type="text" placeholder="Descrição" value={newIncome.name} onChange={e => setNewIncome({...newIncome, name: e.target.value})} className="w-full p-2 border rounded" />
+            <input type="number" placeholder="Valor" value={newIncome.value} onChange={e => setNewIncome({...newIncome, value: e.target.value})} className="w-full p-2 border rounded" />
+            <div className="flex gap-2">
+              <button onClick={() => setNewIncome({...newIncome, type: 'fixed'})} className={`flex-1 py-2 rounded ${newIncome.type === 'fixed' ? 'bg-emerald-600 text-white' : 'bg-slate-100'}`}>Fixo</button>
+              <button onClick={() => setNewIncome({...newIncome, type: 'variable'})} className={`flex-1 py-2 rounded ${newIncome.type === 'variable' ? 'bg-emerald-600 text-white' : 'bg-slate-100'}`}>Variável</button>
+            </div>
+            {newIncome.type === 'variable' && (
+              <select value={newIncome.month} onChange={e => setNewIncome({...newIncome, month: parseInt(e.target.value)})} className="w-full p-2 border rounded">
+                {months.map((m, i) => <option key={i} value={i}>{m}</option>)}
+              </select>
+            )}
+            <button onClick={addIncome} className="w-full bg-emerald-600 text-white font-bold py-2 rounded mt-2">Adicionar</button>
+          </div>
+        </div>
+
+        <div className="lg:col-span-2 space-y-6">
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200">
+            <div className="p-4 border-b bg-slate-50 font-bold text-slate-700">Receitas Fixas</div>
+            <div className="divide-y">
+              {incomes.filter(i => i.type === 'fixed').map(item => {
+                const isOverridden = item.overrides && item.overrides[selectedMonth] !== undefined;
+                return (
+                  <div key={item.id} className="p-4 flex justify-between items-center">
+                    <div>
+                      <div className="font-medium">{item.name}</div>
+                      <div className="text-xs text-slate-400">Base: {formatCurrency(item.value)}</div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className={`flex items-center gap-2 p-1 rounded border ${isOverridden ? 'bg-yellow-50 border-yellow-300' : 'border-transparent'}`}>
+                        <span className="text-xs text-slate-400">{months[selectedMonth]}:</span>
+                        <input 
+                          type="number" 
+                          value={isOverridden ? item.overrides[selectedMonth] : item.value}
+                          onChange={(e) => updateIncomeOverride(item, e.target.value)}
+                          className={`w-24 bg-transparent text-right font-mono font-bold ${isOverridden ? 'text-yellow-700' : 'text-emerald-600'}`}
+                        />
+                      </div>
+                      {isOverridden && <button onClick={() => resetIncomeOverride(item)}><RotateCcw size={16} className="text-slate-400 hover:text-emerald-600"/></button>}
+                      <button onClick={() => deleteItem('incomes', item.id)}><Trash2 size={18} className="text-slate-300 hover:text-red-500"/></button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+           {/* Receitas Variáveis */}
+           <div className="bg-white rounded-xl shadow-sm border border-slate-200">
+            <div className="p-4 border-b bg-slate-50 font-bold text-slate-700">Extras ({months[selectedMonth]})</div>
+            <div className="divide-y">
+              {incomes.filter(i => i.type === 'variable' && i.month === selectedMonth).map(item => (
+                <div key={item.id} className="p-4 flex justify-between items-center">
+                  <span className="font-medium">{item.name}</span>
+                  <div className="flex gap-4">
+                    <span className="font-mono font-bold text-blue-600">{formatCurrency(item.value)}</span>
+                    <button onClick={() => deleteItem('incomes', item.id)}><Trash2 size={18} className="text-slate-300 hover:text-red-500"/></button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  const MonthlyView = () => (
+    <div className="bg-white rounded-xl shadow-sm border border-slate-200 animate-fade-in">
+      <div className="p-6 border-b flex justify-between items-center bg-slate-50">
+        <h2 className="text-xl font-bold text-slate-800">Checklist Mensal</h2>
+        <MonthSelector />
+      </div>
+      <div className="divide-y">
+        {expenses.map((expense) => {
+          const isPaid = expense.paidStatus[selectedMonth];
+          return (
+            <div key={expense.id} className={`p-4 flex justify-between items-center ${isPaid ? 'bg-emerald-50/30' : ''}`}>
+              <div className="flex items-center gap-4">
+                <button onClick={() => togglePaid(expense)} className={`p-2 rounded-full ${isPaid ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-300'}`}>
+                  {isPaid ? <CheckCircle2 size={24} /> : <Circle size={24} />}
+                </button>
+                <div className={`font-medium ${isPaid ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{expense.name}</div>
+              </div>
+              <div className={`font-mono font-bold ${isPaid ? 'text-emerald-600' : 'text-slate-700'}`}>{formatCurrency(expense.value)}</div>
+            </div>
+          );
+        })}
+        <div className="p-4 flex justify-between bg-indigo-50 border-l-4 border-indigo-400">
+          <div className="font-bold text-slate-800 pl-2">Cartão de Crédito (Total)</div>
+          <div className="font-mono font-bold text-indigo-700">{formatCurrency(finalCardTotal)}</div>
+        </div>
+      </div>
+    </div>
+  );
+
+  const CreditView = () => (
+    <div className="space-y-6 animate-fade-in">
+      <div className="flex justify-between items-center">
+         <h2 className="text-2xl font-bold text-slate-800">Gestão de Cartão</h2>
+         <MonthSelector />
+      </div>
+
+      <div className="bg-indigo-600 p-6 rounded-xl shadow-lg text-white">
+        <h3 className="font-bold mb-4">Fechamento da Fatura ({months[selectedMonth]})</h3>
+        <div className="flex gap-4 items-end">
+          <div className="flex-1">
+            <label className="text-xs text-indigo-200">Valor Real (App do Banco)</label>
+            <div className="flex items-center bg-indigo-700 p-3 rounded border border-indigo-500">
+              <span className="mr-2">R$</span>
+              <input 
+                type="number" 
+                value={manualInvoiceTotal || ''} 
+                onChange={(e) => handleInvoiceTotalChange(e.target.value)} 
+                placeholder={plannedCardTotal.toFixed(2)}
+                className="bg-transparent text-white font-bold text-2xl w-full outline-none"
+              />
+            </div>
+          </div>
+          <div className="bg-white/10 p-3 rounded flex-1">
+            <div className="text-xs text-indigo-200">Previsto (Fixos)</div>
+            <div className="font-bold text-lg">{formatCurrency(plannedCardTotal)}</div>
+          </div>
+          <div className="bg-white text-indigo-900 p-3 rounded flex-1">
+            <div className="text-xs font-bold">Avulsos (Calc)</div>
+            <div className="font-bold text-lg">{formatCurrency(miscellaneousCardExpenses)}</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-slate-800 p-6 rounded-xl text-white">
+        <h3 className="font-bold mb-4 flex gap-2"><Plus size={20} className="text-emerald-400"/> Adicionar Compra</h3>
+        <div className="grid grid-cols-5 gap-4 items-end">
+           <input className="col-span-2 p-2 rounded bg-slate-700 border-slate-600" placeholder="Descrição" value={newCardExpense.name} onChange={e=>setNewCardExpense({...newCardExpense, name: e.target.value})} />
+           <input className="p-2 rounded bg-slate-700 border-slate-600" type="number" placeholder="Valor" value={newCardExpense.value} onChange={e=>setNewCardExpense({...newCardExpense, value: e.target.value})} />
+           <input className="p-2 rounded bg-slate-700 border-slate-600" type="number" placeholder="Parc." value={newCardExpense.installments} onChange={e=>setNewCardExpense({...newCardExpense, installments: e.target.value})} />
+           <select className="p-2 rounded bg-slate-700 border-slate-600" value={newCardExpense.startMonth} onChange={e=>setNewCardExpense({...newCardExpense, startMonth: e.target.value})}>
+             {months.map((m,i)=><option key={i} value={i}>{m}</option>)}
+           </select>
+        </div>
+        <button onClick={addCardExpense} className="mt-4 w-full bg-emerald-600 py-2 rounded font-bold">Adicionar</button>
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm border p-4">
+        <h3 className="font-bold mb-4">Itens Cadastrados</h3>
+        <div className="divide-y max-h-60 overflow-auto">
+          {creditCardExpenses.map(item => (
+            <div key={item.id} className="py-3 flex justify-between items-center">
+               <div>
+                 <div className="font-bold">{item.name}</div>
+                 <div className="text-xs text-slate-500">{item.installments}x de {formatCurrency(item.value)}</div>
+               </div>
+               <button onClick={() => deleteItem('credit_expenses', item.id)}><Trash2 size={18} className="text-slate-300 hover:text-red-500"/></button>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+
+  const VacationView = () => (
+    <div className="space-y-6 animate-fade-in">
+       <div className="flex justify-between items-center">
+         <h2 className="text-2xl font-bold text-slate-800">Fundo de Férias</h2>
+         <div className="text-sm bg-blue-50 text-blue-700 px-3 py-1 rounded-full border border-blue-100">Saldo: {formatCurrency(vacationBalance)}</div>
+      </div>
+      <div className="grid grid-cols-2 gap-6 h-96">
+        <div className="bg-white rounded-xl shadow-sm border flex flex-col">
+          <div className="p-3 bg-emerald-50 border-b font-bold text-emerald-800">Entradas</div>
+          <div className="flex-1 overflow-auto p-4 space-y-2">
+            {vacationFund.incomes.map(item => (
+              <div key={item.id} className="flex justify-between text-sm">
+                <span>{item.name}</span>
+                <span className="flex gap-2 font-mono font-bold text-emerald-600">
+                  {formatCurrency(item.value)}
+                  <button onClick={() => deleteItem('vacation_incomes', item.id)}><Trash2 size={14} className="text-slate-300 hover:text-red-500"/></button>
+                </span>
+              </div>
+            ))}
+          </div>
+          <div className="p-3 border-t bg-slate-50 flex gap-2">
+            <input placeholder="Desc" value={newVacationIncome.name} onChange={e=>setNewVacationIncome({...newVacationIncome, name: e.target.value})} className="flex-1 text-sm p-1 rounded border"/>
+            <input placeholder="R$" type="number" value={newVacationIncome.value} onChange={e=>setNewVacationIncome({...newVacationIncome, value: e.target.value})} className="w-20 text-sm p-1 rounded border"/>
+            <button onClick={addVacationIncome} className="bg-emerald-600 text-white p-1 rounded"><Plus size={16}/></button>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl shadow-sm border flex flex-col">
+          <div className="p-3 bg-red-50 border-b font-bold text-red-800">Saídas</div>
+          <div className="flex-1 overflow-auto p-4 space-y-2">
+            {vacationFund.expenses.map(item => (
+              <div key={item.id} className="flex justify-between text-sm">
+                <span>{item.name}</span>
+                <span className="flex gap-2 font-mono font-bold text-red-600">
+                  {formatCurrency(item.value)}
+                  <button onClick={() => deleteItem('vacation_expenses', item.id)}><Trash2 size={14} className="text-slate-300 hover:text-red-500"/></button>
+                </span>
+              </div>
+            ))}
+          </div>
+          <div className="p-3 border-t bg-slate-50 flex gap-2">
+            <input placeholder="Desc" value={newVacationExpense.name} onChange={e=>setNewVacationExpense({...newVacationExpense, name: e.target.value})} className="flex-1 text-sm p-1 rounded border"/>
+            <input placeholder="R$" type="number" value={newVacationExpense.value} onChange={e=>setNewVacationExpense({...newVacationExpense, value: e.target.value})} className="w-20 text-sm p-1 rounded border"/>
+            <button onClick={addVacationExpense} className="bg-red-600 text-white p-1 rounded"><Plus size={16}/></button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="flex flex-col md:flex-row min-h-screen bg-slate-50 font-sans text-slate-800">
+      <Sidebar />
+      <main className="flex-1 p-4 md:p-8 overflow-y-auto">
+        <div className="max-w-5xl mx-auto">
+          {activeTab === 'dashboard' && <DashboardView />}
+          {activeTab === 'incomes' && <IncomeView />}
+          {activeTab === 'monthly' && <MonthlyView />}
+          {activeTab === 'credit' && <CreditView />}
+          {activeTab === 'vacation' && <VacationView />}
+        </div>
+      </main>
+    </div>
+  );
+};
+
+export default App;
