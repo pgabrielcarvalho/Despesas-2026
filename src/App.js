@@ -14,21 +14,25 @@ import {
 
 // --- CONFIGURAÇÃO FIREBASE ---
 
-// LÓGICA HÍBRIDA:
-// 1. Se estiver rodando aqui no Preview, usa a config automática (__firebase_config).
-// 2. Se você exportar para Vercel, o código cairá no 'else' e usará a config manual.
-// QUANDO FOR PARA A VERCEL: Substitua o objeto vazio abaixo pelas suas chaves reais do Firebase.
-
 let firebaseConfig;
 let appId;
 
-if (typeof __firebase_config !== 'undefined') {
-  // Configuração Automática (Ambiente de Teste Aqui)
-  const firebaseConfig = JSON.parse(__firebase_config);
-  appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+// TRUQUE PARA O VERCEL: Usamos 'window.' para acessar as variáveis globais.
+// Assim o ESLint (verificador de erros) não reclama que elas não existem.
+const envConfig = window.__firebase_config;
+const envAppId = window.__app_id;
+
+if (envConfig) {
+  // Configuração Automática (Ambiente de Teste Aqui no Chat)
+  try {
+    firebaseConfig = JSON.parse(envConfig);
+  } catch (e) {
+    console.error("Erro ao analisar config", e);
+  }
+  appId = envAppId || 'default-app-id';
 } else {
-  // Configuração Manual (Para quando você colocar na Vercel)
-  // COPIE SUAS CHAVES DO CONSOLE DO FIREBASE E COLE AQUI
+  // Configuração Manual (Para a Vercel - Produção)
+  // Já inseri suas chaves aqui baseado no seu código anterior
   firebaseConfig = {
     apiKey: "AIzaSyBo85fOEKZzAIshCAPIKCs4LTrnuCnRbvg",
     authDomain: "planejamento-2026-82a96.firebaseapp.com",
@@ -76,9 +80,11 @@ const App = () => {
   useEffect(() => {
     const initAuth = async () => {
       try {
-        // Verifica se existe um token de teste (ambiente interno)
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          await signInWithCustomToken(auth, __initial_auth_token);
+        // Acesso seguro ao token via window para evitar erro de linter
+        const internalToken = window.__initial_auth_token;
+        
+        if (internalToken) {
+          await signInWithCustomToken(auth, internalToken);
         } else {
           // Fallback para Vercel/Produção (Login Anônimo)
           await signInAnonymously(auth);
@@ -107,9 +113,9 @@ const App = () => {
         
         // Se for a primeira vez e estiver vazio, popular com dados iniciais (Seed)
         // Usamos localStorage para garantir que o seed só rode uma vez por navegador
-        if (items.length === 0 && !localStorage.getItem(`seeded_${collectionName}_v1`)) {
+        if (items.length === 0 && !localStorage.getItem(`seeded_${collectionName}_v2`)) {
            seedData(collectionName);
-           localStorage.setItem(`seeded_${collectionName}_v1`, 'true');
+           localStorage.setItem(`seeded_${collectionName}_v2`, 'true');
         } else {
            setter(items);
         }
