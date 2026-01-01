@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   PieChart, Wallet, CreditCard, Calendar, CheckCircle2, Circle, 
   TrendingUp, TrendingDown, Plane, Plus, Trash2, AlertCircle, 
-  Save, Banknote, ArrowUpCircle, Edit2, RotateCcw, Loader2 
+  Save, Banknote, ArrowUpCircle, Edit2, RotateCcw, Loader2, BarChart3
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { 
@@ -18,12 +18,10 @@ let firebaseConfig;
 let appId;
 
 // TRUQUE PARA O VERCEL: Usamos 'window.' para acessar as variáveis globais.
-// Assim o ESLint (verificador de erros) não reclama que elas não existem.
 const envConfig = window.__firebase_config;
 const envAppId = window.__app_id;
 
 if (envConfig) {
-  // Configuração Automática (Ambiente de Teste Aqui no Chat)
   try {
     firebaseConfig = JSON.parse(envConfig);
   } catch (e) {
@@ -32,7 +30,6 @@ if (envConfig) {
   appId = envAppId || 'default-app-id';
 } else {
   // Configuração Manual (Para a Vercel - Produção)
-  // Já inseri suas chaves aqui baseado no seu código anterior
   firebaseConfig = {
     apiKey: "AIzaSyBo85fOEKZzAIshCAPIKCs4LTrnuCnRbvg",
     authDomain: "planejamento-2026-82a96.firebaseapp.com",
@@ -67,6 +64,7 @@ const App = () => {
 
   // --- ESTADOS DE FORMULÁRIO ---
   const [newIncome, setNewIncome] = useState({ name: '', value: '', type: 'fixed', month: 0 });
+  const [newExpense, setNewExpense] = useState({ name: '', value: '' });
   const [newCardExpense, setNewCardExpense] = useState({ name: '', value: '', installments: 1, startMonth: 0 });
   const [newVacationIncome, setNewVacationIncome] = useState({ name: '', value: '' });
   const [newVacationExpense, setNewVacationExpense] = useState({ name: '', value: '' });
@@ -80,13 +78,10 @@ const App = () => {
   useEffect(() => {
     const initAuth = async () => {
       try {
-        // Acesso seguro ao token via window para evitar erro de linter
         const internalToken = window.__initial_auth_token;
-        
         if (internalToken) {
           await signInWithCustomToken(auth, internalToken);
         } else {
-          // Fallback para Vercel/Produção (Login Anônimo)
           await signInAnonymously(auth);
         }
       } catch (error) {
@@ -102,33 +97,26 @@ const App = () => {
   useEffect(() => {
     if (!user) return;
 
-    // Caminho dos dados: artifacts/APP_NAME/users/USER_ID
     const basePath = `artifacts/${appId}/users/${user.uid}`;
 
-    // Helper para ouvir coleções
     const subscribe = (collectionName, setter) => {
       const q = query(collection(db, basePath, collectionName));
       return onSnapshot(q, (snapshot) => {
         const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        
-        // Se for a primeira vez e estiver vazio, popular com dados iniciais (Seed)
-        // Usamos localStorage para garantir que o seed só rode uma vez por navegador
-        if (items.length === 0 && !localStorage.getItem(`seeded_${collectionName}_v2`)) {
+        if (items.length === 0 && !localStorage.getItem(`seeded_${collectionName}_v3`)) {
            seedData(collectionName);
-           localStorage.setItem(`seeded_${collectionName}_v2`, 'true');
+           localStorage.setItem(`seeded_${collectionName}_v3`, 'true');
         } else {
            setter(items);
         }
       }, (err) => console.error(`Erro lendo ${collectionName}:`, err));
     };
 
-    // Helper para ouvir documento único (Totais Fatura)
     const subscribeDoc = (docName, setter, defaultVal) => {
        return onSnapshot(doc(db, basePath, 'general', docName), (docSnap) => {
          if (docSnap.exists()) {
            setter(docSnap.data().data);
          } else {
-           // Criar doc se não existe
            setDoc(doc(db, basePath, 'general', docName), { data: defaultVal });
          }
        });
@@ -157,18 +145,18 @@ const App = () => {
      
      if (collectionName === 'expenses') {
        initialData = [
-         { name: "Condomínio", value: 2500.00, paidStatus: Array(12).fill(false) },
-         { name: "Escola Crianças", value: 4500.00, paidStatus: Array(12).fill(false) },
-         { name: "Energia Elétrica", value: 600.00, paidStatus: Array(12).fill(false) },
-         { name: "Água / Saneamento", value: 180.00, paidStatus: Array(12).fill(false) },
-         { name: "Gás", value: 120.00, paidStatus: Array(12).fill(false) },
-         { name: "Internet / TV / Tel", value: 350.00, paidStatus: Array(12).fill(false) },
-         { name: "Supermercado (Mensal)", value: 3000.00, paidStatus: Array(12).fill(false) },
-         { name: "Feira / Açougue", value: 800.00, paidStatus: Array(12).fill(false) },
-         { name: "Combustível", value: 800.00, paidStatus: Array(12).fill(false) },
-         { name: "Seguro Auto", value: 450.00, paidStatus: Array(12).fill(false) },
-         { name: "Plano de Saúde", value: 1200.00, paidStatus: Array(12).fill(false) },
-         { name: "Empregada / Diarista", value: 1800.00, paidStatus: Array(12).fill(false) },
+         { name: "Condomínio", value: 2500.00, paidStatus: Array(12).fill(false), overrides: {} },
+         { name: "Escola Crianças", value: 4500.00, paidStatus: Array(12).fill(false), overrides: {} },
+         { name: "Energia Elétrica", value: 600.00, paidStatus: Array(12).fill(false), overrides: {} },
+         { name: "Água / Saneamento", value: 180.00, paidStatus: Array(12).fill(false), overrides: {} },
+         { name: "Gás", value: 120.00, paidStatus: Array(12).fill(false), overrides: {} },
+         { name: "Internet / TV / Tel", value: 350.00, paidStatus: Array(12).fill(false), overrides: {} },
+         { name: "Supermercado (Mensal)", value: 3000.00, paidStatus: Array(12).fill(false), overrides: {} },
+         { name: "Feira / Açougue", value: 800.00, paidStatus: Array(12).fill(false), overrides: {} },
+         { name: "Combustível", value: 800.00, paidStatus: Array(12).fill(false), overrides: {} },
+         { name: "Seguro Auto", value: 450.00, paidStatus: Array(12).fill(false), overrides: {} },
+         { name: "Plano de Saúde", value: 1200.00, paidStatus: Array(12).fill(false), overrides: {} },
+         { name: "Empregada / Diarista", value: 1800.00, paidStatus: Array(12).fill(false), overrides: {} },
        ];
      } else if (collectionName === 'incomes') {
        initialData = [
@@ -205,12 +193,9 @@ const App = () => {
   const saveItem = async (collectionName, item) => {
     if (!user) return;
     const basePath = `artifacts/${appId}/users/${user.uid}`;
-    // Se tem ID, atualiza (set), senão cria (add/set com id gerado)
     const docRef = item.id 
       ? doc(db, basePath, collectionName, item.id) 
       : doc(collection(db, basePath, collectionName));
-    
-    // Remove campo id do payload para não duplicar
     const { id, ...data } = item; 
     await setDoc(docRef, data);
   };
@@ -228,7 +213,7 @@ const App = () => {
   };
 
 
-  // --- HANDLERS (Adaptados para usar o DB) ---
+  // --- HANDLERS ---
 
   const togglePaid = (expense) => {
     const newStatus = [...expense.paidStatus];
@@ -239,7 +224,7 @@ const App = () => {
   const handleInvoiceTotalChange = (val) => {
     const newTotals = [...invoiceTotals];
     newTotals[selectedMonth] = parseFloat(val) || 0;
-    saveInvoiceTotals(newTotals); // Salva no DB
+    saveInvoiceTotals(newTotals);
   };
 
   const addCardExpense = () => {
@@ -265,10 +250,20 @@ const App = () => {
     setNewIncome({ name: '', value: '', type: 'fixed', month: selectedMonth });
   };
 
+  const addExpense = () => {
+    if (!newExpense.name || !newExpense.value) return;
+    saveItem('expenses', {
+      name: newExpense.name,
+      value: parseFloat(newExpense.value),
+      paidStatus: Array(12).fill(false),
+      overrides: {}
+    });
+    setNewExpense({ name: '', value: '' });
+  };
+
   const updateIncomeOverride = (income, newValueStr) => {
     const newValue = parseFloat(newValueStr);
     const newOverrides = { ...income.overrides };
-    
     if (isNaN(newValue) || newValue === income.value) {
       delete newOverrides[selectedMonth];
     } else {
@@ -281,6 +276,23 @@ const App = () => {
     const newOverrides = { ...income.overrides };
     delete newOverrides[selectedMonth];
     saveItem('incomes', { ...income, overrides: newOverrides });
+  };
+
+  const updateExpenseOverride = (expense, newValueStr) => {
+    const newValue = parseFloat(newValueStr);
+    const newOverrides = { ...expense.overrides } || {};
+    if (isNaN(newValue) || newValue === expense.value) {
+      delete newOverrides[selectedMonth];
+    } else {
+      newOverrides[selectedMonth] = newValue;
+    }
+    saveItem('expenses', { ...expense, overrides: newOverrides });
+  };
+
+  const resetExpenseOverride = (expense) => {
+    const newOverrides = { ...expense.overrides };
+    delete newOverrides[selectedMonth];
+    saveItem('expenses', { ...expense, overrides: newOverrides });
   };
 
   const addVacationIncome = () => {
@@ -301,7 +313,7 @@ const App = () => {
     setNewVacationExpense({ name: '', value: '' });
   };
 
-  // --- CÁLCULOS (Idênticos, apenas lendo dos states populados pelo DB) ---
+  // --- CÁLCULOS GERAIS ---
   const getMonthlyIncome = (monthIndex) => {
     return incomes.reduce((acc, item) => {
       if (item.type === 'fixed') {
@@ -315,26 +327,37 @@ const App = () => {
     }, 0);
   };
 
-  const currentMonthlyIncome = getMonthlyIncome(selectedMonth);
-
-  const getActiveCardExpenses = (monthIndex) => {
-    return creditCardExpenses.filter(item => {
-      const endMonth = item.startMonth + item.installments;
-      return monthIndex >= item.startMonth && monthIndex < endMonth;
-    }).map(item => ({
-      ...item,
-      currentParcel: monthIndex - item.startMonth + 1
-    }));
+  const getMonthlyFixedExpenses = (monthIndex) => {
+    return expenses.reduce((acc, item) => {
+      const monthValue = item.overrides && item.overrides[monthIndex] !== undefined
+        ? item.overrides[monthIndex]
+        : item.value;
+      return acc + monthValue;
+    }, 0);
   };
 
-  const activeCardExpenses = getActiveCardExpenses(selectedMonth);
+  const getMonthlyCardTotal = (monthIndex) => {
+    const activeItems = creditCardExpenses.filter(item => {
+      const endMonth = item.startMonth + item.installments;
+      return monthIndex >= item.startMonth && monthIndex < endMonth;
+    });
+    const planned = activeItems.reduce((acc, item) => acc + item.value, 0);
+    const manual = invoiceTotals[monthIndex];
+    return manual > 0 ? manual : planned;
+  };
+
+  const currentMonthlyIncome = getMonthlyIncome(selectedMonth);
+  const activeCardExpenses = creditCardExpenses.filter(item => {
+      const endMonth = item.startMonth + item.installments;
+      return selectedMonth >= item.startMonth && selectedMonth < endMonth;
+  }).map(item => ({...item, currentParcel: selectedMonth - item.startMonth + 1}));
+
   const plannedCardTotal = activeCardExpenses.reduce((acc, item) => acc + item.value, 0);
-  
   const manualInvoiceTotal = invoiceTotals[selectedMonth];
   const finalCardTotal = manualInvoiceTotal > 0 ? manualInvoiceTotal : plannedCardTotal;
   const miscellaneousCardExpenses = Math.max(0, finalCardTotal - plannedCardTotal);
 
-  const totalFixedExpenses = expenses.reduce((acc, item) => acc + item.value, 0);
+  const totalFixedExpenses = getMonthlyFixedExpenses(selectedMonth);
   const totalMonthExpenses = totalFixedExpenses + finalCardTotal;
   const balance = currentMonthlyIncome - totalMonthExpenses;
 
@@ -353,7 +376,6 @@ const App = () => {
     );
   }
 
-  // Componentes de UI (Idênticos aos anteriores, apenas chamando as funções atualizadas)
   const MonthSelector = () => (
     <div className="flex items-center gap-4 bg-white p-2 rounded-lg shadow-sm border border-slate-200">
       <span className="text-slate-500 text-sm font-medium pl-2">Mês:</span>
@@ -381,6 +403,7 @@ const App = () => {
           { id: 'incomes', icon: Banknote, label: 'Receitas' },
           { id: 'monthly', icon: Calendar, label: 'Despesas Mensais' },
           { id: 'credit', icon: CreditCard, label: 'Gestão Cartão' },
+          { id: 'yearly', icon: BarChart3, label: 'Visão Anual' },
           { id: 'vacation', icon: Plane, label: 'Fundo Férias' },
         ].map(item => (
           <button 
@@ -506,33 +529,125 @@ const App = () => {
   );
 
   const MonthlyView = () => (
-    <div className="bg-white rounded-xl shadow-sm border border-slate-200 animate-fade-in">
-      <div className="p-6 border-b flex justify-between items-center bg-slate-50">
-        <h2 className="text-xl font-bold text-slate-800">Checklist Mensal</h2>
+    <div className="space-y-6 animate-fade-in">
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold text-slate-800">Despesas Mensais</h2>
         <MonthSelector />
       </div>
-      <div className="divide-y">
-        {expenses.map((expense) => {
-          const isPaid = expense.paidStatus[selectedMonth];
-          return (
-            <div key={expense.id} className={`p-4 flex justify-between items-center ${isPaid ? 'bg-emerald-50/30' : ''}`}>
-              <div className="flex items-center gap-4">
-                <button onClick={() => togglePaid(expense)} className={`p-2 rounded-full ${isPaid ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-300'}`}>
-                  {isPaid ? <CheckCircle2 size={24} /> : <Circle size={24} />}
-                </button>
-                <div className={`font-medium ${isPaid ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{expense.name}</div>
+
+      <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+        <h3 className="text-sm font-bold text-slate-600 mb-2 flex items-center gap-2"><Plus size={16}/> Adicionar Nova Despesa (Fixa/Recorrente)</h3>
+        <div className="flex gap-2">
+          <input className="flex-1 p-2 rounded bg-slate-50 border" placeholder="Nome (Ex: Clube, Curso)" value={newExpense.name} onChange={e=>setNewExpense({...newExpense, name: e.target.value})} />
+          <input className="w-32 p-2 rounded bg-slate-50 border" type="number" placeholder="Valor Base" value={newExpense.value} onChange={e=>setNewExpense({...newExpense, value: e.target.value})} />
+          <button onClick={addExpense} className="bg-emerald-600 text-white px-4 rounded font-bold">Salvar</button>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200">
+        <div className="p-4 border-b bg-slate-50 font-bold text-slate-700 flex justify-between">
+          <span>Checklist de Pagamentos</span>
+          <span className="text-xs font-normal text-slate-500">Edite o valor se variar este mês</span>
+        </div>
+        <div className="divide-y">
+          {expenses.map((expense) => {
+            const isPaid = expense.paidStatus[selectedMonth];
+            const isOverridden = expense.overrides && expense.overrides[selectedMonth] !== undefined;
+            const currentValue = isOverridden ? expense.overrides[selectedMonth] : expense.value;
+
+            return (
+              <div key={expense.id} className={`p-4 flex flex-col sm:flex-row justify-between items-center gap-4 ${isPaid ? 'bg-emerald-50/30' : ''}`}>
+                <div className="flex items-center gap-4 w-full sm:w-auto">
+                  <button onClick={() => togglePaid(expense)} className={`p-2 rounded-full transition-all ${isPaid ? 'bg-emerald-500 text-white scale-110' : 'bg-slate-100 text-slate-300 hover:bg-slate-200'}`}>
+                    {isPaid ? <CheckCircle2 size={24} /> : <Circle size={24} />}
+                  </button>
+                  <div className={`font-medium ${isPaid ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{expense.name}</div>
+                </div>
+                
+                <div className="flex items-center gap-4">
+                   <div className={`flex items-center gap-2 p-1 px-2 rounded border ${isOverridden ? 'bg-yellow-50 border-yellow-300' : 'border-transparent hover:border-slate-200'}`}>
+                      <span className="text-xs text-slate-400">R$</span>
+                      <input 
+                        type="number" 
+                        value={currentValue}
+                        onChange={(e) => updateExpenseOverride(expense, e.target.value)}
+                        className={`w-24 bg-transparent text-right font-mono font-bold outline-none ${isOverridden ? 'text-yellow-700' : (isPaid ? 'text-emerald-600' : 'text-slate-700')}`}
+                      />
+                   </div>
+                   {isOverridden && <button onClick={() => resetExpenseOverride(expense)} title="Voltar ao valor original"><RotateCcw size={16} className="text-slate-400 hover:text-emerald-600"/></button>}
+                   <button onClick={() => deleteItem('expenses', expense.id)}><Trash2 size={18} className="text-slate-300 hover:text-red-500"/></button>
+                </div>
               </div>
-              <div className={`font-mono font-bold ${isPaid ? 'text-emerald-600' : 'text-slate-700'}`}>{formatCurrency(expense.value)}</div>
+            );
+          })}
+          
+          <div className="p-4 flex justify-between bg-indigo-50 border-l-4 border-indigo-400">
+            <div className="flex items-center gap-2 pl-2">
+              <CreditCard size={20} className="text-indigo-500"/>
+              <div className="font-bold text-slate-800">Cartão de Crédito (Total)</div>
             </div>
-          );
-        })}
-        <div className="p-4 flex justify-between bg-indigo-50 border-l-4 border-indigo-400">
-          <div className="font-bold text-slate-800 pl-2">Cartão de Crédito (Total)</div>
-          <div className="font-mono font-bold text-indigo-700">{formatCurrency(finalCardTotal)}</div>
+            <div className="font-mono font-bold text-indigo-700 text-lg">{formatCurrency(finalCardTotal)}</div>
+          </div>
         </div>
       </div>
     </div>
   );
+
+  const YearlyView = () => {
+    // Calculo de totais para o ano todo
+    const yearData = months.map((m, i) => {
+      const inc = getMonthlyIncome(i);
+      const fix = getMonthlyFixedExpenses(i);
+      const card = getMonthlyCardTotal(i);
+      const tot = fix + card;
+      const bal = inc - tot;
+      return { month: m, income: inc, fixed: fix, card: card, total: tot, balance: bal };
+    });
+
+    return (
+      <div className="space-y-6 animate-fade-in">
+        <h2 className="text-2xl font-bold text-slate-800">Visão Anual 2026</h2>
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-x-auto">
+          <table className="w-full text-sm text-left">
+            <thead className="bg-slate-50 text-slate-500 uppercase text-xs">
+              <tr>
+                <th className="px-4 py-3">Mês</th>
+                <th className="px-4 py-3 text-right text-emerald-600">Receita</th>
+                <th className="px-4 py-3 text-right">Fixas</th>
+                <th className="px-4 py-3 text-right">Cartão</th>
+                <th className="px-4 py-3 text-right text-red-600">Total Saídas</th>
+                <th className="px-4 py-3 text-right font-bold">Saldo</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {yearData.map((d, i) => (
+                <tr key={i} className="hover:bg-slate-50">
+                  <td className="px-4 py-3 font-medium text-slate-700">{d.month}</td>
+                  <td className="px-4 py-3 text-right font-mono text-emerald-600">{formatCurrency(d.income)}</td>
+                  <td className="px-4 py-3 text-right font-mono text-slate-600">{formatCurrency(d.fixed)}</td>
+                  <td className="px-4 py-3 text-right font-mono text-indigo-600">{formatCurrency(d.card)}</td>
+                  <td className="px-4 py-3 text-right font-mono text-red-600 font-bold">{formatCurrency(d.total)}</td>
+                  <td className={`px-4 py-3 text-right font-mono font-bold ${d.balance >= 0 ? 'text-emerald-600 bg-emerald-50' : 'text-red-600 bg-red-50'}`}>
+                    {formatCurrency(d.balance)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot className="bg-slate-100 font-bold text-slate-800">
+              <tr>
+                <td className="px-4 py-3">TOTAL</td>
+                <td className="px-4 py-3 text-right">{formatCurrency(yearData.reduce((a,b)=>a+b.income,0))}</td>
+                <td className="px-4 py-3 text-right">-</td>
+                <td className="px-4 py-3 text-right">-</td>
+                <td className="px-4 py-3 text-right">{formatCurrency(yearData.reduce((a,b)=>a+b.total,0))}</td>
+                <td className="px-4 py-3 text-right">{formatCurrency(yearData.reduce((a,b)=>a+b.balance,0))}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+    );
+  };
 
   const CreditView = () => (
     <div className="space-y-6 animate-fade-in">
@@ -656,6 +771,7 @@ const App = () => {
           {activeTab === 'dashboard' && <DashboardView />}
           {activeTab === 'incomes' && <IncomeView />}
           {activeTab === 'monthly' && <MonthlyView />}
+          {activeTab === 'yearly' && <YearlyView />}
           {activeTab === 'credit' && <CreditView />}
           {activeTab === 'vacation' && <VacationView />}
         </div>
