@@ -34,12 +34,14 @@ if (envConfig) {
   // Sem isso, o login NÃO funcionará na Vercel/iPhone.
   
   firebaseConfig = {
-  apiKey: "AIzaSyBo85fOEKZzAIshCAPIKCs4LTrnuCnRbvg",
-  authDomain: "planejamento-2026-82a96.firebaseapp.com",
-  projectId: "planejamento-2026-82a96",
-  storageBucket: "planejamento-2026-82a96.firebasestorage.app",
-  messagingSenderId: "161920317938",
-  appId: "1:161920317938:web:51b0677afb1a16de23936b"
+    apiKey: "AIzaSyBo85fOEKZzAIshCAPIKCs4LTrnuCnRbvg",
+    authDomain: "planejamento-2026-82a96.firebaseapp.com",
+    projectId: "planejamento-2026-82a96",
+    storageBucket: "planejamento-2026-82a96.firebasestorage.app",
+    messagingSenderId: "161920317938",
+    appId: "1:161920317938:web:51b0677afb1a16de23936b"
+  };
+  
   appId = 'planejamento-2026';
 }
 
