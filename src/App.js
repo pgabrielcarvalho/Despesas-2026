@@ -33,7 +33,7 @@ if (envConfig) {
   // Substitua os valores abaixo pelos que estão no seu Console do Firebase.
   // Sem isso, o login NÃO funcionará na Vercel/iPhone.
   
-  const firebaseConfig = {
+  firebaseConfig = {
   apiKey: "AIzaSyBo85fOEKZzAIshCAPIKCs4LTrnuCnRbvg",
   authDomain: "planejamento-2026-82a96.firebaseapp.com",
   projectId: "planejamento-2026-82a96",
