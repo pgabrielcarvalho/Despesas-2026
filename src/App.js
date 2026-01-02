@@ -31,7 +31,7 @@ if (envConfig) {
 } else {
   // --- AQUI ESTÁ O PONTO DE ATENÇÃO ---
   // Substitua os valores abaixo pelos que estão no seu Console do Firebase.
-  // Sem isso, o login NÃO funcionará na Vercel/iPhone.
+  // Sem isso, o login NÃO funcionará corretamente em novos dispositivos.
   
   firebaseConfig = {
     apiKey: "AIzaSyBo85fOEKZzAIshCAPIKCs4LTrnuCnRbvg",
@@ -40,7 +40,7 @@ if (envConfig) {
     storageBucket: "planejamento-2026-82a96.firebasestorage.app",
     messagingSenderId: "161920317938",
     appId: "1:161920317938:web:51b0677afb1a16de23936b"
-  };
+};
   
   appId = 'planejamento-2026';
 }
@@ -87,7 +87,6 @@ const App = () => {
         if (internalToken) {
           await signInWithCustomToken(auth, internalToken);
         }
-        // Se não tiver token interno (Vercel), não faz nada e espera o usuário clicar em Login
       } catch (error) {
         console.error("Erro na autenticação:", error);
       }
@@ -103,6 +102,18 @@ const App = () => {
     return () => unsubscribe();
   }, []);
 
+  // --- TIMEOUT DE SEGURANÇA ---
+  // Se o Firebase demorar mais de 5s (ex: erro de config), libera a tela para tentar login manual
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (loading) {
+        console.warn("Carregamento demorou muito. Liberando tela de login.");
+        setLoading(false);
+      }
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, [loading]);
+
   // --- HANDLERS DE AUTH ---
   const handleGoogleLogin = async () => {
     const provider = new GoogleAuthProvider();
@@ -110,7 +121,7 @@ const App = () => {
       await signInWithPopup(auth, provider);
     } catch (error) {
       console.error("Erro no login:", error);
-      alert("Erro ao fazer login: " + error.message + "\n\nVerifique:\n1. Se as chaves no código estão certas.\n2. Se o Google Auth está ativado no Firebase.\n3. Se o domínio do site está autorizado no Firebase.");
+      alert("Erro ao fazer login: " + error.message + "\n\nDica: Verifique se você substituiu as chaves 'COLE_SUA_API_KEY_AQUI' no código pelas do seu Firebase.");
     }
   };
 
