@@ -29,15 +29,17 @@ if (envConfig) {
   }
   appId = envAppId || 'default-app-id';
 } else {
-  // Configuração Manual (Para a Vercel - Produção)
-  firebaseConfig = {
-    apiKey: "AIzaSyBo85fOEKZzAIshCAPIKCs4LTrnuCnRbvg",
-    authDomain: "planejamento-2026-82a96.firebaseapp.com",
-    projectId: "planejamento-2026-82a96",
-    storageBucket: "planejamento-2026-82a96.firebasestorage.app",
-    messagingSenderId: "161920317938",
-    appId: "1:161920317938:web:51b0677afb1a16de23936b"
-  };
+  // --- AQUI ESTÁ O PONTO DE ATENÇÃO ---
+  // Substitua os valores abaixo pelos que estão no seu Console do Firebase.
+  // Sem isso, o login NÃO funcionará na Vercel/iPhone.
+  
+  const firebaseConfig = {
+  apiKey: "AIzaSyBo85fOEKZzAIshCAPIKCs4LTrnuCnRbvg",
+  authDomain: "planejamento-2026-82a96.firebaseapp.com",
+  projectId: "planejamento-2026-82a96",
+  storageBucket: "planejamento-2026-82a96.firebasestorage.app",
+  messagingSenderId: "161920317938",
+  appId: "1:161920317938:web:51b0677afb1a16de23936b"
   appId = 'planejamento-2026';
 }
 
@@ -106,7 +108,7 @@ const App = () => {
       await signInWithPopup(auth, provider);
     } catch (error) {
       console.error("Erro no login:", error);
-      alert("Erro ao fazer login. Verifique se o Google Auth está ativado no Firebase.");
+      alert("Erro ao fazer login: " + error.message + "\n\nVerifique:\n1. Se as chaves no código estão certas.\n2. Se o Google Auth está ativado no Firebase.\n3. Se o domínio do site está autorizado no Firebase.");
     }
   };
 
